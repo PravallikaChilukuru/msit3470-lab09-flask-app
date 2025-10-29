@@ -1,2 +1,7 @@
+<<<<<<< HEAD
 flask==3.0.0
 pytest==8.3.2
+=======
+flask==3.0.0
+pytest==8.3.2
+>>>>>>> origin/main
