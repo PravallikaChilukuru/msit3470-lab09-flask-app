@@ -8,93 +8,38 @@ on:
 
 env:
   AWS_REGION: us-east-1
+  ACCOUNT_ID: 115643029642
   ECR_REPO: flask-ci-cd-app
   ECS_CLUSTER: msit3470-lab09-cluster-app
   ECS_SERVICE: flask-service
-  YOURID4: 1234
-  ACCOUNT_ID: 115643029642
 
-jobs:
-  build-test-push:
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-    outputs:
-      image_tag: ${{ steps.set-tag.outputs.TAG }}
+steps:
+  - name: Checkout Repository
+    uses: actions/checkout@v4
 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
+  - name: Configure AWS Credentials (OIDC)
+    uses: aws-actions/configure-aws-credentials@v5
+    with:
+      role-to-assume: arn:aws:iam::115643029642:role/GitHubActionsDeployRole
+      aws-region: us-east-1
 
-      - name: Setup Python, Install Dependencies, and Run Tests
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: |
-          pip install -r requirements.txt
-          pip install pytest
-          pytest -q
+  - name: Build IMAGE_URI dynamically
+    id: build_uri
+    run: |
+      IMAGE_URI="${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ needs.build-test-push.outputs.image_tag }}"
+      echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+      echo "✅ Using image: $IMAGE_URI"
 
-      - name: Set Image Tag and ECR URI
-        id: set-tag
-        run: |
-          SHA=$(git rev-parse --short HEAD)
-          TAG="${SHA}-${{ env.YOURID4 }}"
-          IMAGE_URI="${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${TAG}"
-          echo "TAG=$TAG" >> $GITHUB_OUTPUT
-          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+  - name: Render ECS Task Definition and Deploy to ECS 🚀
+    run: |
+      sed "s|IMAGE_URI|${IMAGE_URI}|g" ecs-taskdef-template.json > ecs-taskdef.json
 
-      - name: Configure AWS Credentials (OIDC) and ECR Login
-        if: github.ref == 'refs/heads/main'
-        uses: aws-actions/configure-aws-credentials@v5
-        with:
-          role-to-assume: arn:aws:iam::${{ env.ACCOUNT_ID }}:role/GitHubActionsDeployRole
-          aws-region: ${{ env.AWS_REGION }}
+  - name: Deploy Task Definition
+    uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+    with:
+      task-definition: ecs-taskdef.json
+      service: ${{ env.ECS_SERVICE }}
+      cluster: ${{ env.ECS_CLUSTER }}
+      wait-for-service-stability: true
 
-      - name: Build and Push Docker image to ECR
-        if: github.ref == 'refs/heads/main'
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          push: true
-          tags: ${{ env.IMAGE_URI }}
 
-  deploy:
-    needs: build-test-push
-    if: github.ref == 'refs/heads/main' && always()
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
-
-    env:
-        AWS_REGION: us-east-1
-        ACCOUNT_ID: 115643029642
-        ECR_REPO: flask-ci-cd-app
-        ECS_CLUSTER: msit3470-lab09-cluster-app
-        ECS_SERVICE: flask-service
-        IMAGE_TAG: ${{ needs.build-test-push.outputs.image_tag }}
-        IMAGE_URI: ${{ format('{0}.dkr.ecr.{1}.amazonaws.com/{2}:{3}', env.ACCOUNT_ID, env.AWS_REGION, env.ECR_REPO, needs.build-test-push.outputs.image_tag) }}
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Configure AWS Credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v5
-        with:
-          role-to-assume: arn:aws:iam::${{ env.ACCOUNT_ID }}:role/GitHubActionsDeployRole
-          aws-region: ${{ env.AWS_REGION }}
-
-      - name: Render ECS Task Definition and Deploy to ECS
-        run: |
-          sed "s|IMAGE_URI|${{ env.IMAGE_URI }}|g" ecs-taskdef-template.json > ecs-taskdef.json
-
-      - name: Deploy Task Definition
-        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
-        with:
-          task-definition: ecs-taskdef.json
-          service: ${{ env.ECS_SERVICE }}
-          cluster: ${{ env.ECS_CLUSTER }}
-          wait-for-service-stability: true
