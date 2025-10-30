@@ -13,6 +13,15 @@ env:
   ECS_CLUSTER: msit3470-lab09-cluster-app
   ECS_SERVICE: flask-service
 
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image_tag: ${{ steps.set-tag.outputs.TAG }}
+
 steps:
   - name: Checkout Repository
     uses: actions/checkout@v4
