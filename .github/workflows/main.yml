@@ -1,0 +1,84 @@
+name: App CI/CD Simplified
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  AWS_REGION: us-east-1
+  ACCOUNT_ID: 115643029642
+  ECR_REPO: flask-ci-cd-app
+  ECS_CLUSTER: msit3470-lab09-cluster-app
+  ECS_SERVICE: flask-service
+
+jobs:
+  build-test-push:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    outputs:
+      image_tag: ${{ steps.set-tag.outputs.TAG }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Image Tag
+        id: set-tag
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          TAG="${SHA}"
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::115643029642:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and Push Docker Image 🐳
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ steps.set-tag.outputs.TAG }}
+
+  deploy:
+    needs: build-test-push
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::115643029642:role/GitHubActionsDeployRole
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build IMAGE_URI dynamically
+        id: build_uri
+        run: |
+          IMAGE_URI="${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ needs.build-test-push.outputs.image_tag }}"
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+          echo "✅ Using image: $IMAGE_URI"
+
+      - name: Render ECS Task Definition and Deploy to ECS 🚀
+        run: |
+          sed "s|IMAGE_URI|${IMAGE_URI}|g" ecs-taskdef-template.json > ecs-taskdef.json
+
+      - name: Deploy Task Definition
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ecs-taskdef.json
+          service: ${{ env.ECS_SERVICE }}
+          cluster: ${{ env.ECS_CLUSTER }}
+          wait-for-service-stability: true
