@@ -1,4 +1,4 @@
-name: App CI/CD Simplified
+name: App CI/CD Simplified- MSIT3470-Lab09
 
 on:
   push:
