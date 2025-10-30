@@ -69,7 +69,13 @@ jobs:
       contents: read
 
     env:
-      IMAGE_URI: ${{ env.ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_REPO }}:${{ needs.build-test-push.outputs.image_tag }}
+        AWS_REGION: us-east-1
+        ACCOUNT_ID: 115643029642
+        ECR_REPO: flask-ci-cd-app
+        ECS_CLUSTER: msit3470-lab09-cluster-app
+        ECS_SERVICE: flask-service
+        IMAGE_TAG: ${{ needs.build-test-push.outputs.image_tag }}
+        IMAGE_URI: ${{ format('{0}.dkr.ecr.{1}.amazonaws.com/{2}:{3}', env.ACCOUNT_ID, env.AWS_REGION, env.ECR_REPO, needs.build-test-push.outputs.image_tag) }}
 
     steps:
       - name: Checkout Repository
