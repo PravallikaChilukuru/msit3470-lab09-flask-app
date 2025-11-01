@@ -11,7 +11,7 @@ env:
   ACCOUNT_ID: 115643029642
   ECR_REPO: flask-ci-cd-app
   ECS_CLUSTER: msit3470-lab09-cluster-app
-  ECS_SERVICE: flask-service
+  ECS_SERVICE: flask-ci-cd-task-service-39kgmvox
 
 jobs:
   build-test-push:
